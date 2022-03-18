@@ -21,16 +21,100 @@ namespace SpanAPI.Controllers
 
         // GET: api/csv
         [HttpGet("csv")]
-        public async Task<IEnumerable<PersonCsvDto>> GetPersonsCsv()
+        public async Task<ActionResult<IEnumerable<PersonCsvDto>>> GetPersonsCsv()
         {
-            Task<List<PersonCsvDto>> loadFromCsvTask = loadFromCsvAsync();
-            List<PersonCsvDto> personCsvList = await loadFromCsvTask;
+            try
+            {
+                Task<List<PersonCsvDto>> loadFromCsvTask = loadFromCsvAsync();
+                List<PersonCsvDto> personCsvList = await loadFromCsvTask;
 
-            logger.LogInformation($"{DateTime.UtcNow.ToString("hh:mm:ss")}: Retrieved {personCsvList.Count()} persons from file.");
+                logger.LogInformation($"{DateTime.UtcNow.ToString("hh:mm:ss")}: Retrieved {personCsvList.Count()} persons from file.");
 
-            return personCsvList;
+                return personCsvList;
+            }catch (FileNotFoundException)
+            {
+                logger.LogError("File podaci.csv not found!");
+                return StatusCode(404, "File podaci.csv not found!");
+            }
+            
         }
 
+        //POST: api/csv
+        [HttpPost("csv")]
+        public async Task<ActionResult<IEnumerable<PersonDto>>> PostCsvPersons()
+        {
+            try
+            {
+                Task<List<PersonCsvDto>> loadFromCsvTask = loadFromCsvAsync();
+                List<PersonCsvDto> personCsvList = await loadFromCsvTask;
+
+                personCsvList = personCsvList.Where(person => person.correctFormat.Equals(true)).ToList();
+
+                int count = 0;
+
+                try
+                {
+                    foreach (PersonCsvDto personCsvDto in personCsvList)
+                    {
+                        if (!PersonExistsByNumber(personCsvDto.Number))
+                        {
+                            _context.Persons.Add(personCsvDto.AsModel());
+                            count++;
+                        }
+                    }
+                    await _context.SaveChangesAsync();
+
+                }catch (Microsoft.Data.SqlClient.SqlException)
+                {
+                    logger.LogError("Database error. Table or database doesn't exist!");
+                    return StatusCode(404, "Database error. Table or database doesn't exist!");
+                }
+
+                logger.LogInformation($"{DateTime.UtcNow.ToString("hh:mm:ss")}: Saved {count} persons from file.");
+
+                return CreatedAtAction("GetPersonsCsv", personCsvList);
+            }
+            catch (FileNotFoundException)
+            {
+                logger.LogError("File podaci.csv not found!");
+                return StatusCode(404, "File podaci.csv not found!");
+            }
+
+        }
+
+        private bool PersonExistsByNumber(string number)
+        {
+            return _context.Persons.Any(e => e.Number == number);
+        }
+
+        private Task<List<PersonCsvDto>> loadFromCsvAsync()
+        {
+            string csvPath = System.Configuration.ConfigurationManager.AppSettings["csvPath"];
+
+            List<PersonCsvDto> personCsvList = new List<PersonCsvDto>();
+            using (TextFieldParser csvParser = new TextFieldParser(csvPath))
+            {
+                csvParser.SetDelimiters(new string[] { ";" });
+
+                while (!csvParser.EndOfData)
+                {
+                    string[] fields = csvParser.ReadFields();
+                    if (Int32.TryParse(fields[2], out int postalCode))
+                    {
+                        personCsvList.Add(new PersonCsvDto(fields[0], fields[1], fields[2], fields[3], fields[4], true));
+                    }
+                    else
+                    {
+                        personCsvList.Add(new PersonCsvDto(fields[0], fields[1], fields[2], fields[3], fields[4], false));
+                    }
+                }
+            }
+
+            return Task.FromResult(personCsvList);
+        }
+
+        /*
+        // *************************************** Made for testing database, not needed for production. ***************************************
         // GET: api/Person
         [HttpGet]
         public async Task<IEnumerable<PersonDto>> GetPersons(string name = null)
@@ -99,30 +183,6 @@ namespace SpanAPI.Controllers
             return NoContent();
         }
 
-        [HttpPost("csv")]
-        public async Task<ActionResult<IEnumerable<PersonDto>>> PostCsvPersons()
-        {
-            Task<List<PersonCsvDto>> loadFromCsvTask = loadFromCsvAsync();
-            List<PersonCsvDto> personCsvList = await loadFromCsvTask;
-
-            personCsvList = personCsvList.Where(person => person.correctFormat.Equals(true)).ToList();
-
-            int count = 0;
-            foreach (PersonCsvDto personCsvDto in personCsvList)
-            {
-                if (!PersonExistsByNumber(personCsvDto.Number))
-                {
-                    _context.Persons.Add(personCsvDto.AsModel());
-                    count++;
-                }
-            }
-            await _context.SaveChangesAsync();
-
-            logger.LogInformation($"{DateTime.UtcNow.ToString("hh:mm:ss")}: Saved {count} persons from file.");
-
-            return CreatedAtAction("GetPersons", personCsvList);
-        }
-
         // POST: api/Person
         [HttpPost]
         public async Task<ActionResult<PersonDto>> PostPerson(PersonDto personDto)
@@ -154,37 +214,7 @@ namespace SpanAPI.Controllers
         {
             return _context.Persons.Any(e => e.Id == id);
         }
-
-        private bool PersonExistsByNumber(string number)
-        {
-            return _context.Persons.Any(e => e.Number == number);
-        }
-
-        private Task<List<PersonCsvDto>> loadFromCsvAsync()
-        {
-            string csvPath = System.Configuration.ConfigurationManager.AppSettings["csvPath"];
-
-            List<PersonCsvDto> personCsvList = new List<PersonCsvDto>();
-            using (TextFieldParser csvParser = new TextFieldParser(csvPath))
-            {
-                csvParser.SetDelimiters(new string[] { ";" });
-
-                while (!csvParser.EndOfData)
-                {
-                    string[] fields = csvParser.ReadFields();
-                    if (Int32.TryParse(fields[2], out int postalCode))
-                    {
-                        personCsvList.Add(new PersonCsvDto(fields[0], fields[1], fields[2], fields[3], fields[4], true));
-                    }
-                    else
-                    {
-                        personCsvList.Add(new PersonCsvDto(fields[0], fields[1], fields[2], fields[3], fields[4], false));
-                    }
-                }
-            }
-
-            return Task.FromResult(personCsvList);
-        }
+        */
 
     }
 }

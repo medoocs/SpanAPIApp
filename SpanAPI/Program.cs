@@ -11,7 +11,8 @@ builder.Host.UseSerilog(((ctx, lc) => lc
 
 .ReadFrom.Configuration(ctx.Configuration)));
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+        options.SuppressAsyncSuffixInActionNames = false);
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddDbContext<DataContext>(options =>
@@ -31,11 +32,6 @@ builder.Services.AddCors(options =>
 });
 var app = builder.Build();
 app.UseSerilogRequestLogging();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
 
 app.UseCors(myAllowSpecificOrigins);
 
